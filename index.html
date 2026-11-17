@@ -258,9 +258,12 @@
                 <div>
                     <h2 class="text-xs sm:text-sm font-bold text-white flex items-center gap-2">
                         <span id="bannerCompanyTitle">Grupo Consolidado (SKYBOX + NSGOV)</span>
-                        <span id="repoSyncBadge" class="hidden px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
-                            <i class="fa-solid fa-cloud-arrow-down mr-1"></i>Sincronizado via dados_dashboard.xlsx
+                        <span id="repoSyncBadge" class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-800 text-slate-300 border border-slate-700">
+                            <i class="fa-solid fa-database mr-1"></i>Base Embutida
                         </span>
+                        <button onclick="tryAutoLoadRepoSpreadsheet(true)" title="Forçar nova leitura do arquivo dados_dashboard.xlsx no GitHub" class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-500/15 hover:bg-sky-500/30 text-sky-300 border border-sky-500/30 transition-colors cursor-pointer">
+                            <i class="fa-solid fa-rotate mr-1"></i>Sincronizar
+                        </button>
                     </h2>
                     <p id="bannerSubText" class="text-[11px] text-slate-400">Total de 768.444 caixas físicas em 10/2026 (502.711 SKYBOX + 265.733 NSGOV).</p>
                 </div>
@@ -2941,20 +2944,51 @@
         });
 
         // Carregamento automático opcional de 'dados_dashboard.xlsx' hospedado no mesmo repositório GitHub Pages
-        async function tryAutoLoadRepoSpreadsheet() {
+        async function tryAutoLoadRepoSpreadsheet(manualTrigger = false) {
+            const badge = document.getElementById('repoSyncBadge');
+            if (badge && manualTrigger) {
+                badge.className = "px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/15 text-amber-300 border border-amber-500/30";
+                badge.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-1"></i>Buscando dados_dashboard.xlsx...`;
+            }
             try {
-                const response = await fetch('./dados_dashboard.xlsx?t=' + Date.now(), { cache: 'no-store' });
-                if (!response.ok) return;
-                const arrayBuffer = await response.arrayBuffer();
+                // Tenta buscar na raiz relativa e também no caminho absoluto do repositório
+                const candidates = [
+                    `./dados_dashboard.xlsx?t=${Date.now()}`,
+                    `dados_dashboard.xlsx?t=${Date.now()}`
+                ];
+                let arrayBuffer = null;
+                for (const url of candidates) {
+                    const response = await fetch(url, { cache: 'no-store' });
+                    if (response.ok) {
+                        arrayBuffer = await response.arrayBuffer();
+                        break;
+                    }
+                }
+                if (!arrayBuffer) {
+                    if (badge && manualTrigger) {
+                        badge.className = "px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/15 text-rose-300 border border-rose-500/30";
+                        badge.innerHTML = `<i class="fa-solid fa-clock mr-1"></i>Aguardando GitHub Pages publicar (tente em 30s)`;
+                    }
+                    return;
+                }
                 const workbook = XLSX.read(new Uint8Array(arrayBuffer), { type: 'array' });
                 const result = applyWorkbookToDashboard(workbook);
                 if (result.updatedClients || result.updatedOrders) {
-                    const badge = document.getElementById('repoSyncBadge');
-                    if (badge) badge.classList.remove('hidden');
                     refreshDashboard();
+                    if (badge) {
+                        const hora = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+                        badge.className = "px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30";
+                        badge.innerHTML = `<i class="fa-solid fa-circle-check mr-1"></i>Sincronizado via Excel (${hora})`;
+                    }
+                } else if (badge && manualTrigger) {
+                    badge.className = "px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/15 text-amber-300 border border-amber-500/30";
+                    badge.innerHTML = `<i class="fa-solid fa-triangle-exclamation mr-1"></i>Arquivo lido, mas sem colunas compatíveis`;
                 }
             } catch (e) {
-                // Silencioso quando o arquivo opcional ainda não foi enviado ao repositório
+                if (badge && manualTrigger) {
+                    badge.className = "px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-800 text-slate-300 border border-slate-700";
+                    badge.innerHTML = `<i class="fa-solid fa-database mr-1"></i>Base Embutida`;
+                }
             }
         }
 
